@@ -57,14 +57,14 @@ Run the application using Streamlit:
 
 ## 📂 Project Structure
 
-* **app.py**: The main application script.
-* **RAG.py**: Contains the logic for the RAG system.
-* **chat_history.txt**: Stores the chat logs.
-* **local_qwen_model/**: Folder containing the offline model.
-* **faiss_index_hr/**: Folder for the vector database (FAISS).
-* **Test_qwen.py**: Script for testing the model.
-* **WA_Fn-UseC_-HR-Em...**: The HR dataset file.
-* **.gitignore**: Specifies files to ignore in Git.
+* `app.py`: The main application script.
+* `RAG.py`: Contains the logic for the RAG system.
+* `chat_history.txt`: Stores the chat logs.
+* `local_qwen_model/`: Folder containing the offline model.
+* `faiss_index_hr/`: Folder for the vector database (FAISS).
+* `Test_qwen.py`: Script for testing the model.
+* `WA_Fn-UseC_-HR-Employee-Attrition.csv`: The HR dataset file.
+* `.gitignore`: Specifies files to ignore in Git.
 
 ## 👤 Author
 Developed by **Jana**👩‍💻
