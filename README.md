@@ -66,5 +66,24 @@ Run the application using Streamlit:
 * `WA_Fn-UseC_-HR-Employee-Attrition.csv`: The HR dataset file.
 * `.gitignore`: Specifies files to ignore in Git.
 
+## 📸 Screenshots
+### 1. User Interface
+The application features a clean and user-friendly interface powered by **Streamlit**. The sidebar allows easy access to settings and chat history.
+<img width="1917" height="1002" alt="Screenshot 2026-02-01 114755" src="https://github.com/user-attachments/assets/37655304-e735-4e04-86d4-67fb0ba40e95" />
+
+### 2. Model Selection
+Users can easily switch between models using the dropdown menu:
+* **Local Qwen 1.5B:** For offline usage.
+* **Cloud Qwen 72B:** For advanced reasoning using the Hugging Face API.
+<img width="392" height="318" alt="Screenshot 2026-02-01 114810" src="https://github.com/user-attachments/assets/011d9ae1-07fb-4613-a185-c0814b9e690b" />
+
+### 3. Chat History
+The chatbot automatically saves your conversations. You can:
+* **View History:** Expand the list to read past queries and answers.
+* **Clear History:** Delete all saved chats with a single click to start fresh.
+<img width="379" height="287" alt="Screenshot 2026-02-01 114845" src="https://github.com/user-attachments/assets/dd58fdf4-6e4d-434c-a666-9f0970ce3d8e" />
+<img width="210" height="300" alt="Screenshot 2026-02-01 114836" src="https://github.com/user-attachments/assets/0788281a-8c3d-4462-942e-cee7c685b890" />
+
+
 ## 👤 Author
 Developed by **Jana**👩‍💻
