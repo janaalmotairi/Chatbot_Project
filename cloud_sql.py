@@ -1,6 +1,7 @@
 from db import execute_sql
 from sql_utils import normalize_sql, pretty_answer
 
+
 def ask_cloud_sql(client, question: str) -> str:
     prompt = f"""
 You are a SQL generator.
