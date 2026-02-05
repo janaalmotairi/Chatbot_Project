@@ -1,0 +1,10 @@
+USER:
+hi
+
+----------------------
+
+ASSISTANT:
+Error in cloud agent: name 'HuggingFaceHub' is not defined
+
+----------------------
+

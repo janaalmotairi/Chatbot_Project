@@ -1,153 +1,184 @@
-import streamlit as st
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from huggingface_hub import InferenceClient
-from RAG import get_context 
+"""
+HR Assistant Chatbot (Streamlit)
+"""
+
 import os
+import json
+import torch
+import streamlit as st
+import re
+from setup_models import load_groq_client
 
-st.set_page_config(page_title="HR Chatbot", page_icon="🤖")
-st.title("HR Assistant Chatbot 🤖")
+# Local pipeline (cleaning + column fixes + pretty answers)
+from local_sql import ask_local_sql
 
-# --- Function to save chat history to a text file ---
-def save_to_file(role, text):
-    with open("chat_history.txt", "a", encoding="utf-8") as f:
-        f.write(f"{role.upper()}:\n{text}\n\n")
-        f.write("----------------------\n\n")
+# DB
+from db import init_db, execute_sql
 
-# --- Sidebar Settings ---
-with st.sidebar:
-    st.header("Settings")
-    model_name = st.selectbox(
-        "Select Model",
-        ("Local Qwen 1.5B", "Cloud Qwen 72B")
+
+# ---------------------------------------------------------------------
+# Init DB once
+# ---------------------------------------------------------------------
+init_db()
+
+
+# ---------------------------------------------------------------------
+# Cloud helpers (clean SQL + fix columns + format result)
+# ---------------------------------------------------------------------
+def _clean_sql_cloud(sql: str) -> str:
+    s = (sql or "").strip()
+    s = s.replace("```sql", "").replace("```", "").strip()
+    s = re.sub(r"^\s*sql\s*:\s*", "", s, flags=re.IGNORECASE).strip()
+
+    m = re.search(r"(select\b.*)", s, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        s = m.group(1).strip()
+
+    return s.split(";")[0].strip()
+
+
+def _fix_common_columns_cloud(sql: str) -> str:
+    replacements = {
+        "monthly_income": "MonthlyIncome",
+        "monthlyincome": "MonthlyIncome",
+        "salary": "MonthlyIncome",
+        "income": "MonthlyIncome",
+        "job_satisfaction": "JobSatisfaction",
+        "work_life_balance": "WorkLifeBalance",
+        "education_field": "EducationField",
+        "job_role": "JobRole",
+        "overtime": "OverTime",
+    }
+
+    out = sql
+    for wrong, right in replacements.items():
+        out = re.sub(rf"\b{wrong}\b", right, out, flags=re.IGNORECASE)
+    return out
+
+
+def _format_result(cols, rows) -> str:
+    if not rows:
+        return "No results found."
+
+    if len(cols) == 1 and len(rows) == 1:
+        return str(rows[0][0])
+
+    return "\n".join(
+        [", ".join(cols)] +
+        [", ".join(str(x) for x in r) for r in rows[:10]]
     )
-    st.markdown("---")
 
-    #SECURE_API_TOKEN = "**********"
 
-    st.markdown("Chat History")
+# ---------------------------------------------------------------------
+# Page config
+# ---------------------------------------------------------------------
+st.set_page_config(page_title="HR Assistant Chatbot", page_icon="🤖", layout="centered")
+st.title("🤖 HR Assistant Chatbot")
 
-    # Display history and Clear Button
-    if os.path.exists("chat_history.txt"):
-        with open("chat_history.txt", "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            
-            # Display history in an expander
-            if lines:
-                with st.expander("View History"):
-                    for line in lines:
-                        if line.strip():
-                            st.caption(line.strip())
-                
-                # Button to clear history
-                if st.button("Clear Chat History", key="clear_history_btn"):
-                    open("chat_history.txt", "w").close() # Clears the file
-                    st.rerun()
-            else:
-                st.info("History is empty.")
-    else:
-        st.info("No chat history found.")
-                    
-    st.markdown("---")
-    st.markdown("Developed by Jana 👩🏻‍💻")
 
-    @st.cache_resource
-    def load_local_model():
-        model_path = "./local_qwen_model" 
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_path,
-                local_files_only=True,
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-            return model, tokenizer
-        except OSError:
-            return None, None
-
-# --- Initialize Session State ---
+# ---------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- Display Previous Messages ---
-for message in st.session_state.messages:   
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
 
-# --- Handle New User Input ---
-if prompt := st.chat_input("Ask your HR related questions here..."):
-    
-    # 1. Display and save user message
+def _make_sql_prompt(question: str) -> str:
+    return f"""
+You are a data analyst. Convert the user question into a SQL query only.
+Rules:
+- Output ONLY SQL, no explanation.
+- Use table name: employees
+- Use valid SQLite syntax.
+
+Question:
+{question}
+
+SQL:
+""".strip()
+
+
+# ---------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("## ⚙️ Settings")
+
+    model_name = st.selectbox(
+        "Select Model",
+        ("Local Qwen (Offline)", "Cloud (Groq)"),
+    )
+
+    groq_key_input = ""
+    if model_name == "Cloud (Groq)":
+        groq_key_input = st.text_input("Groq API Key", type="password")
+
+
+# ---------------------------------------------------------------------
+# Render chat history
+# ---------------------------------------------------------------------
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
+
+
+# ---------------------------------------------------------------------
+# Chat input
+# ---------------------------------------------------------------------
+prompt = st.chat_input("Ask a question (English / Arabic)...")
+
+if prompt:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    save_to_file("user", prompt)
 
-    # 2. Generate Assistant Response
+    response_text = ""
+
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
+        placeholder = st.empty()
+        placeholder.markdown("⏳ Processing...")
 
-        # A. Retrieve Context from RAG
-        context_text = ""
         try:
-            results = get_context(prompt)
-            if isinstance(results, list):
-                context_text = "\n".join([doc.page_content for doc in results])
+            # ==========================================================
+            # LOCAL MODE
+            # ==========================================================
+            if model_name == "Local Qwen (Offline)":
+                response_text = ask_local_sql(prompt)
+
+            # ==========================================================
+            # CLOUD MODE (FIXED)
+            # ==========================================================
             else:
-                context_text = str(results)
-        except Exception as e:
-            st.error(f"Error connecting to Knowledge Base: {e}")
+                if not groq_key_input:
+                    raise ValueError("Please enter your Groq API Key in the sidebar.")
 
-        final_prompt = f"Answer based on this context:\n{context_text}\n\nQuestion:{prompt}"
+                client = load_groq_client(groq_key_input)
 
-        full_response = "" 
-        
-        # B. Choose between Local and Cloud Model
-        if model_name == "Local Qwen 1.5B":
-            # --- Run Local Model ---
-            model, tokenizer = load_local_model()
-            
-            if model and tokenizer:
-                messages = [
-                    {"role": "system", "content": "You are a helpful HR assistant."},
-                    {"role": "user", "content": final_prompt}
-                ]
-                text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                
-                model_input = tokenizer([text], return_tensors="pt").to(model.device)
-                
-                generated_ids = model.generate(
-                    model_input.input_ids,
-                    max_new_tokens=512,
-                    do_sample=True,
-                    temperature=0.7
-                )
-                
-                generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(model_input.input_ids, generated_ids)]
-                full_response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-            else:
-                full_response = "Error: Local model not found."
+                sql_prompt = _make_sql_prompt(prompt)
 
-        else:
-            # --- Run Cloud Model (Cloud Qwen 72B) ---
-            try:
-                client = InferenceClient(token=SECURE_API_TOKEN)
-                response = client.chat_completion(
-                    model="Qwen/Qwen2.5-72B-Instruct",
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
                     messages=[
-                        {"role": "system", "content": "You are a helpful HR assistant."},
-                        {"role": "user", "content": final_prompt}
+                        {"role": "system", "content": "You generate SQL queries only."},
+                        {"role": "user", "content": sql_prompt},
                     ],
-                    max_tokens=512,
-                    stream=False
+                    temperature=0,
                 )
-                full_response = response.choices[0].message.content
-            except Exception as e:
-                st.error(f"Error loading cloud model: {e}")
-                full_response = "Cloud Error."
 
-        # 3. Display and save assistant response
-        message_placeholder.markdown(full_response)
-        save_to_file("assistant", full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                sql_query = completion.choices[0].message.content
+                sql_query = _clean_sql_cloud(sql_query)
+                sql_query = _fix_common_columns_cloud(sql_query)
+
+                cols, rows = execute_sql(sql_query)
+                response_text = _format_result(cols, rows)
+
+            placeholder.empty()
+            st.markdown(response_text if response_text else "No response.")
+
+        except Exception as e:
+            placeholder.empty()
+            response_text = f"Runtime error: {e}"
+            st.error(response_text)
+
+    st.session_state.messages.append({"role": "assistant", "content": response_text})

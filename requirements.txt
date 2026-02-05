@@ -1,0 +1,6 @@
+streamlit
+pandas
+torch
+transformers
+groq
+sqlite3

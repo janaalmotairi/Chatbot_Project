@@ -1,0 +1,14 @@
+USER:
+hello
+
+----------------------
+
+ASSISTANT:
+Error in cloud agent: 2 validation errors for HuggingFaceHub
+repository_id
+  extra fields not permitted (type=value_error.extra)
+__root__
+  Could not import huggingface_hub python package. Please install it with `pip install huggingface_hub`. (type=value_error)
+
+----------------------
+

@@ -1,0 +1,20 @@
+USER:
+hello
+
+----------------------
+
+ASSISTANT:
+Error in local RAG: Using a `device_map`, `tp_plan`, `torch.device` context manager or setting `torch.set_default_device(device)` requires `accelerate`. You can install it with `pip install accelerate`
+
+----------------------
+
+USER:
+hello
+
+----------------------
+
+ASSISTANT:
+Error in cloud agent: name 'huggingface_hub' is not defined
+
+----------------------
+
